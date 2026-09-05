@@ -1,10 +1,12 @@
 import cv2
 import mediapipe as mp
 
+import config
+
 
 class HandDetector:
     def __init__(self):
-        model_path = "models/hand_landmarker.task"
+        model_path = str(config.HAND_MODEL_PATH)
 
         base_options = mp.tasks.BaseOptions(
             model_asset_path=model_path

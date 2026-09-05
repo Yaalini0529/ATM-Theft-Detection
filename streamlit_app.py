@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import io
-import time
 from datetime import datetime
 
 import cv2
+import numpy as np
 import streamlit as st
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -149,16 +149,9 @@ def get_detector(model_path: str, confidence: float) -> Detector:
     return Detector(model_path=model_path, confidence_threshold=confidence)
 
 
-@st.cache_data
-def discover_cameras(max_devices: int = 4) -> list[int]:
-    """Discover available camera devices from the local machine."""
-    available: list[int] = []
-    for index in range(max_devices):
-        capture = cv2.VideoCapture(index)
-        if capture.isOpened():
-            available.append(index)
-        capture.release()
-    return available
+def discover_cameras() -> list[str]:
+    """Describe browser camera input without probing the server's hardware."""
+    return ["browser-camera"]
 
 
 def get_status_color(status: str) -> str:
@@ -296,20 +289,29 @@ def render_metric_cards(history: list[dict], latest_result: dict | None) -> None
 
 
 def render_live_detection_panel() -> tuple[dict | None, bool, str, str]:
-    """Render live detection controls and output while keeping the existing detector logic."""
+    """Render browser-compatible camera snapshot and image-upload controls."""
     st.subheader("LIVE CAMERA FEED")
     with st.container():
-        control_cols = st.columns([2, 1, 1])
+        control_cols = st.columns([2, 1])
         with control_cols[0]:
             model_path = st.text_input(
                 "Model path",
-                value=str(config.MODEL_DIR / "atm_theft_training" / "weights" / "best.pt"),
+                value=config.DEFAULT_MODEL,
                 help="Detection model used for inference",
             )
         with control_cols[1]:
             confidence = st.slider("Confidence", 0.0, 1.0, float(config.DEFAULT_CONFIDENCE), 0.01)
-        with control_cols[2]:
-            source_option = st.selectbox("Source", ["webcam", "demo"], index=0)
+        source_option = st.radio(
+            "Input source",
+            ["Camera snapshot", "Upload image", "Demo image"],
+            horizontal=True,
+        )
+
+        uploaded_file = None
+        if source_option == "Camera snapshot":
+            uploaded_file = st.camera_input("Take a camera snapshot")
+        elif source_option == "Upload image":
+            uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
         frame_cols = st.columns([3, 1])
         frame_holder = frame_cols[0].empty()
@@ -318,7 +320,16 @@ def render_live_detection_panel() -> tuple[dict | None, bool, str, str]:
         run_button = st.button("Start detection", use_container_width=True)
         stop_button = st.button("Stop", use_container_width=True)
 
-    return {"model_path": model_path, "confidence": confidence, "source_option": source_option, "run_button": run_button, "stop_button": stop_button, "frame_holder": frame_holder, "side_holder": side_holder}, run_button, model_path, source_option
+    return {
+        "model_path": model_path,
+        "confidence": confidence,
+        "source_option": source_option,
+        "uploaded_file": uploaded_file,
+        "run_button": run_button,
+        "stop_button": stop_button,
+        "frame_holder": frame_holder,
+        "side_holder": side_holder,
+    }, run_button, model_path, source_option
 
 
 def render_threat_panel(result: dict | None) -> None:
@@ -444,8 +455,8 @@ def render_system_status() -> None:
     available = discover_cameras()
     systems = [
         ("AI Model Status", "ONLINE" if config.DEFAULT_MODEL else "OFFLINE"),
-        ("Camera Status", "CONNECTED" if available else "DISCONNECTED"),
-        ("Database Status", "ONLINE" if db else "OFFLINE"),
+        ("Camera Status", "BROWSER READY" if available else "DISCONNECTED"),
+        ("Database Status", "ONLINE" if db.available else "OFFLINE"),
         ("Detection Engine Status", "ACTIVE"),
         ("Alert Engine Status", "ACTIVE"),
     ]
@@ -515,45 +526,45 @@ def main() -> None:
         controls = render_live_detection_panel()
         config_data = controls[0]
         run_button = config_data["run_button"]
-        stop_button = config_data["stop_button"]
         frame_holder = config_data["frame_holder"]
         side_holder = config_data["side_holder"]
 
         if run_button:
             detector = get_detector(config_data["model_path"], config_data["confidence"])
-            source_path = "0" if config_data["source_option"] == "webcam" else str(config.PROJECT_ROOT / "dataset" / "images" / "zidane.jpg")
-            cap = cv2.VideoCapture(0 if config_data["source_option"] == "webcam" else str(config.PROJECT_ROOT / "dataset" / "images" / "zidane.jpg"))
-            if not cap.isOpened():
-                st.error("Unable to open the selected input source.")
+            uploaded_file = config_data["uploaded_file"]
+            if config_data["source_option"] == "Demo image":
+                source_path = config.DEFAULT_SOURCE
+                frame = cv2.imread(source_path)
+            elif uploaded_file is not None:
+                source_path = uploaded_file.name
+                frame = cv2.imdecode(
+                    np.frombuffer(uploaded_file.getvalue(), dtype=np.uint8),
+                    cv2.IMREAD_COLOR,
+                )
+            else:
+                st.info("Take a camera snapshot or upload an image before starting detection.")
                 return
 
-            try:
-                while True:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    result = detector.infer_frame(frame, source_name="stream", save_output=True)
-                    st.session_state.latest_result = result
-                    annotated = cv2.cvtColor(result["annotated"], cv2.COLOR_BGR2RGB)
-                    frame_holder.image(annotated, channels="RGB", use_container_width=True)
+            if frame is None:
+                st.error("The selected image could not be decoded.")
+                return
 
-                    if result["detections"]:
-                        rows = [{"Object": d.name, "Confidence": f"{d.confidence * 100:.1f}%"} for d in result["detections"]]
-                        side_holder.table(rows)
-                    else:
-                        side_holder.info("No detections currently visible")
+            result = detector.infer_frame(frame, source_name=source_path, save_output=True)
+            st.session_state.latest_result = result
+            annotated = cv2.cvtColor(result["annotated"], cv2.COLOR_BGR2RGB)
+            frame_holder.image(annotated, channels="RGB", use_container_width=True)
 
-                    reasons = ", ".join(result["threat_reasons"]) if result["threat_reasons"] else "No suspicious activity"
-                    side_holder.markdown(
-                        f"**Threat Level:** {result['threat_level']}<br>**Score:** {result['threat_score']}<br>**Reasons:** {reasons}",
-                        unsafe_allow_html=True,
-                    )
+            if result["detections"]:
+                rows = [{"Object": d.name, "Confidence": f"{d.confidence * 100:.1f}%"} for d in result["detections"]]
+                side_holder.table(rows)
+            else:
+                side_holder.info("No detections currently visible")
 
-                    if stop_button:
-                        break
-                    time.sleep(1.0 / 5)
-            finally:
-                cap.release()
+            reasons = ", ".join(result["threat_reasons"]) if result["threat_reasons"] else "No suspicious activity"
+            side_holder.markdown(
+                f"**Threat Level:** {result['threat_level']}<br>**Score:** {result['threat_score']}<br>**Reasons:** {reasons}",
+                unsafe_allow_html=True,
+            )
 
         if st.session_state.latest_result is not None:
             result = st.session_state.latest_result

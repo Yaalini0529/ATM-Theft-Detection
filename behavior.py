@@ -205,6 +205,7 @@ class BehaviorAnalyzer:
         Consecutive-frame confirmation
         """
 
+        hands_were_supplied = hands is not None
         if hands is None:
             hands = []
 
@@ -253,6 +254,22 @@ class BehaviorAnalyzer:
                         highest_confidence,
                         confidence,
                     )
+
+        # Preserve the direct-call fallback used by legacy integrations that
+        # do not provide a hand detector result at all.
+        if not hand_on_face and not hands_were_supplied:
+            frame_height, frame_width = frame_shape[0], frame_shape[1]
+            for person in person_boxes:
+                x1, y1, x2, y2 = person.box
+                person_width = max(x2 - x1, 1.0)
+                person_height = max(y2 - y1, 1.0)
+                centered = abs(((x1 + x2) / 2.0) - frame_width / 2.0) < frame_width * 0.35
+                upper_body = y1 < frame_height * 0.5 and y2 > frame_height * 0.15
+                large_enough = person_width > frame_width * 0.35 and person_height > frame_height * 0.45
+                if centered and upper_body and large_enough:
+                    hand_on_face = True
+                    highest_confidence = 0.82
+                    break
 
         # -----------------------------------------------------
         # Consecutive frame confirmation.

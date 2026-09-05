@@ -17,8 +17,13 @@ class DatabaseManager:
     def __init__(self, db_path: Optional[Path] = None) -> None:
         self.db_path = Path(db_path or DATABASE_PATH)
         self.logger = logging.getLogger("atm_detector.database")
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._initialize()
+        self.available = True
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._initialize()
+        except (OSError, sqlite3.Error) as exc:
+            self.available = False
+            self.logger.warning("Database storage is unavailable: %s", exc)
 
     def _initialize(self) -> None:
         """Create the required tables if they do not exist."""
@@ -54,6 +59,8 @@ class DatabaseManager:
 
     def log_detection(self, object_name: str, confidence: float, timestamp: Optional[str] = None) -> None:
         """Store a single detection event."""
+        if not self.available:
+            return
         stamp = timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:
             with self._connect() as connection:
@@ -67,6 +74,8 @@ class DatabaseManager:
 
     def log_alert(self, threat_level: str, reason: str, image_path: str) -> None:
         """Store a generated alert event."""
+        if not self.available:
+            return
         now = datetime.now()
         try:
             with self._connect() as connection:
@@ -86,8 +95,14 @@ class DatabaseManager:
 
     def get_alert_history(self) -> list[dict]:
         """Return the list of recent alerts."""
-        with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT id, date, time, threat_level, reason, image_path FROM alerts ORDER BY id DESC"
-            ).fetchall()
-        return [dict(row) for row in rows]
+        if not self.available:
+            return []
+        try:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    "SELECT id, date, time, threat_level, reason, image_path FROM alerts ORDER BY id DESC"
+                ).fetchall()
+            return [dict(row) for row in rows]
+        except sqlite3.Error as exc:
+            self.logger.warning("Failed to read alert history: %s", exc)
+            return []
