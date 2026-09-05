@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+venv/
+.pytest_cache/
+
+# Runtime output
+alerts/*
+evidence/*
+logs/*
+database/*.db
+artifacts/*
+camera_test_*.jpg
+
+# Generated YOLO dataset splits and caches
+dataset/train/
+dataset/valid/
+dataset/test/
+dataset/**/*.cache
+
+# Generated training visualizations
+models/atm_theft_training/*.jpg
+models/atm_theft_training/*.png
+models/atm_theft_training/*.csv
+models/atm_theft_training/args.yaml
+models/atm_theft_training/weights/*.pt
+!models/atm_theft_training/weights/best.pt
+!models/atm_theft_training/weights/last.pt

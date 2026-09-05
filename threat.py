@@ -11,8 +11,14 @@ class ThreatAnalyzer:
     def __init__(self) -> None:
         self.levels = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 
-    def analyze(self, detections: Iterable[object], behavior_reasons: Iterable[str]) -> tuple[str, list[str]]:
-        """Return the threat level and the matched reasons."""
+    def analyze(
+        self,
+        detections: Iterable[object],
+        behavior_reasons: Iterable[str],
+        face_obstructed: bool = False,
+        hand_detected: bool = False,
+    ) -> tuple[str, list[str], int]:
+        """Return the threat level, the matched reasons, and a numeric score."""
         reasons: list[str] = []
         score = 0
         names = [d.name.lower() for d in detections]
@@ -25,7 +31,17 @@ class ThreatAnalyzer:
         phone_count = sum(1 for name in names if name in {"mobile phone", "cell phone", "phone"})
 
         if person_count == 0:
-            return "LOW", []
+            if hand_detected:
+                return "CRITICAL", ["Hand detected"], 12
+            return "LOW", [], 0
+
+        if hand_detected:
+            reasons.append("Hand detected")
+            score += 12
+
+        if face_obstructed:
+            reasons.append("Face obstruction detected")
+            score += 12
 
         if person_count > 1:
             reasons.append("Multiple suspicious persons")
@@ -47,6 +63,8 @@ class ThreatAnalyzer:
             score += 1
 
         for behavior_reason in behavior_reasons:
+            if behavior_reason == "Face obstruction detected":
+                continue
             reasons.append(behavior_reason)
             if behavior_reason in {"Person loitering near ATM", "Sudden running after entering"}:
                 score += 3
@@ -59,6 +77,12 @@ class ThreatAnalyzer:
             reasons.append("Helmet + mask combination")
             score += 3
 
+        if face_obstructed:
+            return "CRITICAL", list(dict.fromkeys(reasons + ["Face obstruction detected"])), max(score, 12)
+
+        if hand_detected:
+            return "CRITICAL", list(dict.fromkeys(reasons)), max(score, 12)
+
         if score >= 10:
             threat_level = "CRITICAL"
         elif score >= 6:
@@ -68,4 +92,4 @@ class ThreatAnalyzer:
         else:
             threat_level = "LOW"
 
-        return threat_level, reasons
+        return threat_level, reasons, score
