@@ -562,14 +562,14 @@ def main() -> None:
 
             reasons = ", ".join(result["threat_reasons"]) if result["threat_reasons"] else "No suspicious activity"
             side_holder.markdown(
-                f"**Threat Level:** {result['threat_level']}<br>**Score:** {result['threat_score']}<br>**Reasons:** {reasons}",
+                f"**Threat Level:** {result['threat_level']}<br>**Score:** {result['threat_score']}<br>**Hands detected:** {result.get('hand_count', len(result.get('hands', [])))}<br>**Reasons:** {reasons}",
                 unsafe_allow_html=True,
             )
 
         if st.session_state.latest_result is not None:
             result = st.session_state.latest_result
             st.markdown(
-                f"**Threat Level:** {result['threat_level']} | **Score:** {result['threat_score']} | **Detections:** {len(result['detections'])}",
+                f"**Threat Level:** {result['threat_level']} | **Score:** {result['threat_score']} | **Hands:** {result.get('hand_count', len(result.get('hands', [])))} | **Detections:** {len(result['detections'])}",
                 unsafe_allow_html=False,
             )
 

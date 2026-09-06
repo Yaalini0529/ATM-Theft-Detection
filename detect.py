@@ -446,6 +446,14 @@ class Detector:
             )
         )
 
+        # Keep the hand rule authoritative even if a custom analyzer or stale
+        # cached detector returns a lower level.
+        if hands:
+            threat_level = "CRITICAL"
+            threat_score = max(threat_score, 12)
+            if "Hand detected" not in threat_reasons:
+                threat_reasons.append("Hand detected")
+
         # -----------------------------------------------------
         # STEP 6 — DATABASE
         # -----------------------------------------------------
@@ -525,6 +533,8 @@ class Detector:
             "detections": detections,
 
             "hands": hands,
+
+            "hand_count": len(hands),
 
             "threat_level": threat_level,
 
@@ -697,10 +707,15 @@ class Detector:
 
         if threat_level == "CRITICAL":
 
+            critical_message = (
+                "HAND DETECTED"
+                if "Hand detected" in threat_reasons
+                else "FACE OBSTRUCTION DETECTED"
+            )
+
             cv2.putText(
                 annotated,
-                "CRITICAL THREAT: "
-                "FACE OBSTRUCTION DETECTED",
+                f"CRITICAL THREAT: {critical_message}",
                 (10, 80),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.9,

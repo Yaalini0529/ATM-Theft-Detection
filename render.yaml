@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: atm-theft-detection
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11

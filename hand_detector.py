@@ -7,6 +7,10 @@ import config
 class HandDetector:
     def __init__(self):
         model_path = str(config.HAND_MODEL_PATH)
+        if not config.HAND_MODEL_PATH.is_file():
+            raise FileNotFoundError(
+                f"MediaPipe hand model not found: {config.HAND_MODEL_PATH}"
+            )
 
         base_options = mp.tasks.BaseOptions(
             model_asset_path=model_path
@@ -16,9 +20,9 @@ class HandDetector:
             base_options=base_options,
             running_mode=mp.tasks.vision.RunningMode.IMAGE,
             num_hands=2,
-            min_hand_detection_confidence=0.5,
-            min_hand_presence_confidence=0.5,
-            min_tracking_confidence=0.5,
+            min_hand_detection_confidence=0.35,
+            min_hand_presence_confidence=0.35,
+            min_tracking_confidence=0.35,
         )
 
         self.detector = mp.tasks.vision.HandLandmarker.create_from_options(
@@ -64,7 +68,7 @@ class HandDetector:
                         "z": landmark.z,
                     })
 
-                detected_hands.append(landmarks)
+                detected_hands.append({"landmarks": landmarks})
 
         return detected_hands
 
